@@ -10,11 +10,20 @@ import {
     UITransform,
     VerticalTextAlignment,
 } from 'cc';
+import { playerData, PlayerState } from '../data/PlayerData';
 
 const { ccclass } = _decorator;
 
 @ccclass('MainUI')
 export class MainUI extends Component {
+    private levelValueLabel: Label | null = null;
+    private coinValueLabel: Label | null = null;
+    private grassValueLabel: Label | null = null;
+    private stageTitleLabel: Label | null = null;
+    private sheepNameLabel: Label | null = null;
+    private experienceLabel: Label | null = null;
+    private unsubscribePlayerData: (() => void) | null = null;
+
     private readonly colors = {
         background: new Color(255, 250, 232, 255),
         panel: new Color(255, 255, 248, 255),
@@ -33,6 +42,16 @@ export class MainUI extends Component {
 
     start(): void {
         this.build();
+        this.unsubscribePlayerData = playerData.subscribe((state) => {
+            this.renderPlayerData(state);
+        });
+    }
+
+    onDestroy(): void {
+        if (this.unsubscribePlayerData) {
+            this.unsubscribePlayerData();
+            this.unsubscribePlayerData = null;
+        }
     }
 
     private build(): void {
@@ -57,15 +76,22 @@ export class MainUI extends Component {
         this.addLabel(root, 'Subtitle', '轻松养羊 · 慢慢变强', 0, 545, 360, 34, 22, this.colors.muted);
 
         const stats = [
-            { x: -238, icon: 'LV', value: '1', label: '等级', color: this.colors.panelGreen },
-            { x: 0, icon: '●', value: '100', label: '金币', color: this.colors.yellowSoft },
-            { x: 238, icon: '叶', value: '12', label: '草料', color: this.colors.panelGreen },
+            { key: 'level', x: -238, icon: 'LV', value: '1', label: '等级', color: this.colors.panelGreen },
+            { key: 'coins', x: 0, icon: '●', value: '100', label: '金币', color: this.colors.yellowSoft },
+            { key: 'grass', x: 238, icon: '叶', value: '12', label: '草料', color: this.colors.panelGreen },
         ];
 
         for (const stat of stats) {
             const card = this.addPanel(root, stat.label + 'Card', stat.x, 470, 204, 86, stat.color, this.colors.greenDark, 12, 3);
             this.addLabel(card, stat.label + 'Icon', stat.icon, -70, 7, 42, 42, 21, this.colors.greenDark, true);
-            this.addLabel(card, stat.label + 'Value', stat.value, 13, 12, 90, 34, 25, this.colors.ink, true);
+            const valueLabel = this.addLabel(card, stat.label + 'Value', stat.value, 13, 12, 90, 34, 25, this.colors.ink, true);
+            if (stat.key === 'level') {
+                this.levelValueLabel = valueLabel;
+            } else if (stat.key === 'coins') {
+                this.coinValueLabel = valueLabel;
+            } else {
+                this.grassValueLabel = valueLabel;
+            }
             this.addLabel(card, stat.label + 'Text', stat.label, 13, -18, 90, 26, 18, this.colors.muted);
         }
     }
@@ -79,7 +105,7 @@ export class MainUI extends Component {
 
     private createStage(root: Node): void {
         const stage = this.addPanel(root, 'StagePanel', 0, 72, 656, 540, this.colors.panelGreen, this.colors.greenDark, 18, 4);
-        this.addLabel(stage, 'StageTitle', '第 1 关 · 微风草原', 0, 222, 390, 48, 25, this.colors.greenDark, true);
+        this.stageTitleLabel = this.addLabel(stage, 'StageTitle', '第 1 关 · 微风草原', 0, 222, 390, 48, 25, this.colors.greenDark, true);
         this.addLabel(stage, 'StageHint', '小羊正在休息，喂草后开始冒险', 0, 180, 520, 38, 20, this.colors.muted);
 
         this.drawGrass(stage, -250, -150);
@@ -88,9 +114,10 @@ export class MainUI extends Component {
         this.drawCloud(stage, 225, 105, 0.58);
         this.drawSheep(stage);
 
-        this.addLabel(stage, 'SheepName', '绵绵  Lv.1', 0, -140, 280, 42, 23, this.colors.ink, true);
+        this.sheepNameLabel = this.addLabel(stage, 'SheepName', '绵绵  Lv.1', 0, -132, 280, 42, 23, this.colors.ink, true);
+        this.experienceLabel = this.addLabel(stage, 'ExperienceText', '经验 0 / 100', 0, -166, 300, 28, 17, this.colors.muted, true);
 
-        const status = this.addPanel(stage, 'IdleStatus', 0, -196, 490, 62, this.colors.white, this.colors.green, 11, 3);
+        const status = this.addPanel(stage, 'IdleStatus', 0, -215, 490, 62, this.colors.white, this.colors.green, 11, 3);
         this.addLabel(status, 'IdleStatusText', '挂机时间  00:00:00', 0, 7, 430, 30, 19, this.colors.ink, true);
         this.addLabel(status, 'IdleStatusHint', '暂无草料供给', 0, -17, 430, 28, 18, this.colors.muted);
     }
@@ -121,6 +148,27 @@ export class MainUI extends Component {
         }
 
         this.addLabel(bar, 'VersionText', 'V0.1 · 原型界面', 0, -75, 260, 26, 16, this.colors.muted);
+    }
+
+    private renderPlayerData(state: Readonly<PlayerState>): void {
+        if (this.levelValueLabel) {
+            this.levelValueLabel.string = String(state.level);
+        }
+        if (this.coinValueLabel) {
+            this.coinValueLabel.string = String(state.coins);
+        }
+        if (this.grassValueLabel) {
+            this.grassValueLabel.string = String(state.grass);
+        }
+        if (this.stageTitleLabel) {
+            this.stageTitleLabel.string = '第 ' + state.stage + ' 关 · 微风草原';
+        }
+        if (this.sheepNameLabel) {
+            this.sheepNameLabel.string = '绵绵  Lv.' + state.level;
+        }
+        if (this.experienceLabel) {
+            this.experienceLabel.string = '经验 ' + state.exp + ' / ' + playerData.requiredExperience(state.level);
+        }
     }
 
     private drawSheep(parent: Node): void {
