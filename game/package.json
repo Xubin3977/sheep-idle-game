@@ -1,6 +1,6 @@
 {
-  "name": "NewProject",
-  "type": "3d",
+  "name": "sheep-idle-game",
+  "type": "2d",
   "uuid": "68ffd351-53c8-4182-a4c1-ef91a055f704",
   "creator": {
     "version": "3.8.8"
