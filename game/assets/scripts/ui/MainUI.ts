@@ -1,5 +1,6 @@
 import {
     _decorator,
+    BlockInputEvents,
     Color,
     Component,
     Graphics,
@@ -10,7 +11,15 @@ import {
     UITransform,
     VerticalTextAlignment,
 } from 'cc';
-import { playerData, PlayerState } from '../data/PlayerData';
+import {
+    MAX_IDLE_SECONDS,
+    PlayerState,
+    SHOP_GRASS_AMOUNT,
+    SHOP_GRASS_COST,
+    STARTER_TASK_REWARD_COINS,
+    STARTER_TASK_REWARD_GRASS,
+    playerData,
+} from '../data/PlayerData';
 
 const { ccclass } = _decorator;
 
@@ -20,12 +29,23 @@ export class MainUI extends Component {
     private coinValueLabel: Label | null = null;
     private grassValueLabel: Label | null = null;
     private stageTitleLabel: Label | null = null;
+    private stageHintLabel: Label | null = null;
     private sheepNameLabel: Label | null = null;
     private experienceLabel: Label | null = null;
+    private idleTimeLabel: Label | null = null;
+    private idleHintLabel: Label | null = null;
+    private taskTextLabel: Label | null = null;
+    private taskProgressLabel: Label | null = null;
+    private shopCoinLabel: Label | null = null;
+    private shopGrassLabel: Label | null = null;
+    private toastNode: Node | null = null;
+    private toastLabel: Label | null = null;
+    private shopOverlay: Node | null = null;
     private unsubscribePlayerData: (() => void) | null = null;
 
     private readonly colors = {
         background: new Color(255, 250, 232, 255),
+        overlay: new Color(61, 70, 55, 175),
         panel: new Color(255, 255, 248, 255),
         panelGreen: new Color(231, 244, 219, 255),
         green: new Color(132, 178, 112, 255),
@@ -40,6 +60,12 @@ export class MainUI extends Component {
         shadow: new Color(181, 195, 164, 100),
     };
 
+    private readonly hideToast = (): void => {
+        if (this.toastNode) {
+            this.toastNode.active = false;
+        }
+    };
+
     start(): void {
         this.build();
         this.unsubscribePlayerData = playerData.subscribe((state) => {
@@ -47,7 +73,12 @@ export class MainUI extends Component {
         });
     }
 
+    update(deltaTime: number): void {
+        playerData.tick(deltaTime);
+    }
+
     onDestroy(): void {
+        this.unschedule(this.hideToast);
         if (this.unsubscribePlayerData) {
             this.unsubscribePlayerData();
             this.unsubscribePlayerData = null;
@@ -69,6 +100,8 @@ export class MainUI extends Component {
         this.createStage(root);
         this.createFeedButton(root);
         this.createNavigation(root);
+        this.createToast(root);
+        this.createShopOverlay(root);
     }
 
     private createHeader(root: Node): void {
@@ -99,14 +132,27 @@ export class MainUI extends Component {
     private createTaskBar(root: Node): void {
         const task = this.addPanel(root, 'TaskBar', 0, 380, 656, 64, this.colors.panel, this.colors.green, 10, 3);
         this.addLabel(task, 'TaskIcon', '✓', -286, 0, 42, 42, 22, this.colors.greenDark, true);
-        this.addLabel(task, 'TaskText', '新手任务：给小羊喂 1 份草', -30, 0, 450, 42, 19, this.colors.ink, false, HorizontalTextAlignment.LEFT);
-        this.addLabel(task, 'TaskProgress', '0 / 1', 278, 0, 70, 42, 18, this.colors.greenDark, true);
+        this.taskTextLabel = this.addLabel(
+            task,
+            'TaskText',
+            '新手任务：给小羊喂 1 份草',
+            -30,
+            0,
+            450,
+            42,
+            19,
+            this.colors.ink,
+            false,
+            HorizontalTextAlignment.LEFT,
+        );
+        this.taskProgressLabel = this.addLabel(task, 'TaskProgress', '0 / 1', 278, 0, 82, 42, 18, this.colors.greenDark, true);
+        this.bindTap(task, () => this.handleTaskTap());
     }
 
     private createStage(root: Node): void {
         const stage = this.addPanel(root, 'StagePanel', 0, 72, 656, 540, this.colors.panelGreen, this.colors.greenDark, 18, 4);
         this.stageTitleLabel = this.addLabel(stage, 'StageTitle', '第 1 关 · 微风草原', 0, 222, 390, 48, 25, this.colors.greenDark, true);
-        this.addLabel(stage, 'StageHint', '小羊正在休息，喂草后开始冒险', 0, 180, 520, 38, 20, this.colors.muted);
+        this.stageHintLabel = this.addLabel(stage, 'StageHint', '小羊正在休息，喂草后开始冒险', 0, 180, 520, 38, 20, this.colors.muted);
 
         this.drawGrass(stage, -250, -150);
         this.drawGrass(stage, 238, -130);
@@ -118,8 +164,8 @@ export class MainUI extends Component {
         this.experienceLabel = this.addLabel(stage, 'ExperienceText', '经验 0 / 100', 0, -166, 300, 28, 17, this.colors.muted, true);
 
         const status = this.addPanel(stage, 'IdleStatus', 0, -215, 490, 62, this.colors.white, this.colors.green, 11, 3);
-        this.addLabel(status, 'IdleStatusText', '挂机时间  00:00:00', 0, 7, 430, 30, 19, this.colors.ink, true);
-        this.addLabel(status, 'IdleStatusHint', '暂无草料供给', 0, -17, 430, 28, 18, this.colors.muted);
+        this.idleTimeLabel = this.addLabel(status, 'IdleStatusText', '挂机时间  00:00:00', 0, 7, 430, 30, 19, this.colors.ink, true);
+        this.idleHintLabel = this.addLabel(status, 'IdleStatusHint', '暂无草料供给', 0, -17, 430, 28, 18, this.colors.muted);
     }
 
     private createFeedButton(root: Node): void {
@@ -127,15 +173,16 @@ export class MainUI extends Component {
         this.addLabel(button, 'FeedPlus', '＋', -206, 0, 58, 58, 35, this.colors.brown, true);
         this.addLabel(button, 'FeedText', '喂草', -35, 10, 210, 40, 27, this.colors.brown, true);
         this.addLabel(button, 'FeedHint', '消耗 1 份草 · 增加 10 分钟', 35, -24, 310, 30, 18, this.colors.brown);
+        this.bindTap(button, () => this.handleFeedTap());
     }
 
     private createNavigation(root: Node): void {
         const bar = this.addPanel(root, 'BottomBar', 0, -512, 720, 190, this.colors.panel, this.colors.green, 0, 3);
         const items = [
-            { x: -270, icon: '店', label: '商城', active: false },
-            { x: -90, icon: '羊', label: '主页', active: true },
-            { x: 90, icon: '战', label: '副本', active: false },
-            { x: 270, icon: '包', label: '背包', active: false },
+            { x: -270, icon: '店', label: '商城', active: false, action: () => this.openShop() },
+            { x: -90, icon: '羊', label: '主页', active: true, action: () => this.closeShop() },
+            { x: 90, icon: '战', label: '副本', active: false, action: () => this.showToast('副本将在后续版本开放') },
+            { x: 270, icon: '包', label: '背包', active: false, action: () => this.showToast('背包将在后续版本开放') },
         ];
 
         for (const item of items) {
@@ -145,9 +192,101 @@ export class MainUI extends Component {
             const textColor = item.active ? this.colors.white : this.colors.greenDark;
             this.addLabel(button, item.label + 'Icon', item.icon, 0, 22, 58, 58, 28, textColor, true);
             this.addLabel(button, item.label + 'Label', item.label, 0, -30, 108, 32, 20, textColor, true);
+            this.bindTap(button, item.action);
         }
 
-        this.addLabel(bar, 'VersionText', 'V0.1 · 原型界面', 0, -75, 260, 26, 16, this.colors.muted);
+        this.addLabel(bar, 'VersionText', 'V0.2 · 可玩版', 0, -75, 260, 26, 16, this.colors.muted);
+    }
+
+    private createToast(root: Node): void {
+        this.toastNode = this.addPanel(root, 'Toast', 0, -390, 500, 64, this.colors.greenDark, this.colors.white, 14, 2);
+        this.toastLabel = this.addLabel(this.toastNode, 'ToastText', '', 0, 0, 450, 42, 20, this.colors.white, true);
+        this.toastNode.active = false;
+    }
+
+    private createShopOverlay(root: Node): void {
+        this.shopOverlay = this.addPanel(root, 'ShopOverlay', 0, 0, 720, 1280, this.colors.overlay, this.colors.overlay, 0, 0);
+        this.shopOverlay.addComponent(BlockInputEvents);
+        const panel = this.addPanel(this.shopOverlay, 'ShopPanel', 0, 60, 620, 760, this.colors.panel, this.colors.greenDark, 22, 4);
+
+        this.addLabel(panel, 'ShopTitle', '草料商城', 0, 310, 300, 58, 34, this.colors.greenDark, true);
+        this.addLabel(panel, 'ShopSubtitle', '用挂机金币补充小羊的草料', 0, 262, 420, 34, 20, this.colors.muted);
+
+        const close = this.addPanel(panel, 'ShopClose', 254, 320, 62, 62, this.colors.panelGreen, this.colors.green, 12, 3);
+        this.addLabel(close, 'ShopCloseText', '×', 0, 2, 44, 44, 30, this.colors.greenDark, true);
+        this.bindTap(close, () => this.closeShop());
+
+        const wallet = this.addPanel(panel, 'ShopWallet', 0, 190, 510, 100, this.colors.panelGreen, this.colors.green, 14, 3);
+        this.shopCoinLabel = this.addLabel(wallet, 'ShopCoins', '金币：100', -120, 0, 220, 48, 22, this.colors.ink, true);
+        this.shopGrassLabel = this.addLabel(wallet, 'ShopGrass', '草料：12', 120, 0, 220, 48, 22, this.colors.ink, true);
+
+        const product = this.addPanel(panel, 'GrassProduct', 0, 18, 510, 190, this.colors.yellowSoft, this.colors.brown, 16, 3);
+        this.addLabel(product, 'GrassProductIcon', '叶', -182, 28, 70, 70, 38, this.colors.greenDark, true);
+        this.addLabel(product, 'GrassProductTitle', '新鲜草料 × ' + SHOP_GRASS_AMOUNT, 22, 44, 310, 46, 25, this.colors.ink, true);
+        this.addLabel(product, 'GrassProductDesc', '可增加 ' + (SHOP_GRASS_AMOUNT * 10) + ' 分钟挂机时间', 22, 4, 330, 34, 18, this.colors.muted);
+
+        const buyButton = this.addPanel(product, 'BuyGrassButton', 42, -56, 320, 62, this.colors.yellow, this.colors.brown, 12, 3);
+        this.addLabel(buyButton, 'BuyGrassText', SHOP_GRASS_COST + ' 金币购买', 0, 0, 270, 40, 21, this.colors.brown, true);
+        this.bindTap(buyButton, () => this.handlePurchaseTap());
+
+        this.addLabel(panel, 'ShopTip', '挂机每 10 秒获得 1 金币与 2 经验', 0, -135, 500, 38, 19, this.colors.muted);
+        this.addLabel(panel, 'ShopSaveTip', '游戏进度会自动保存在当前设备', 0, -190, 500, 38, 18, this.colors.greenDark);
+
+        this.shopOverlay.active = false;
+    }
+
+    private handleFeedTap(): void {
+        const result = playerData.feedGrass();
+        if (result === 'success') {
+            this.showToast('喂草成功：挂机时间增加 10 分钟');
+        } else if (result === 'no-grass') {
+            this.showToast('草料不足，请前往商城购买');
+        } else {
+            this.showToast('挂机时间已达到 2 小时上限');
+        }
+    }
+
+    private handleTaskTap(): void {
+        const result = playerData.claimStarterTask();
+        if (result === 'success') {
+            this.showToast('任务奖励：+' + STARTER_TASK_REWARD_COINS + ' 金币，+' + STARTER_TASK_REWARD_GRASS + ' 草料');
+        } else if (result === 'not-ready') {
+            this.showToast('先给小羊喂 1 份草吧');
+        } else {
+            this.showToast('新手任务奖励已经领取');
+        }
+    }
+
+    private handlePurchaseTap(): void {
+        const result = playerData.purchaseGrass();
+        if (result === 'success') {
+            this.showToast('购买成功：获得 ' + SHOP_GRASS_AMOUNT + ' 份草料');
+        } else {
+            this.showToast('金币不足，需要 ' + SHOP_GRASS_COST + ' 金币');
+        }
+    }
+
+    private openShop(): void {
+        if (this.shopOverlay) {
+            this.shopOverlay.active = true;
+        }
+    }
+
+    private closeShop(): void {
+        if (this.shopOverlay) {
+            this.shopOverlay.active = false;
+        }
+    }
+
+    private showToast(message: string): void {
+        if (!this.toastNode || !this.toastLabel) {
+            return;
+        }
+        this.toastLabel.string = message;
+        this.toastNode.active = true;
+        this.toastNode.setSiblingIndex(this.toastNode.parent ? this.toastNode.parent.children.length - 1 : 0);
+        this.unschedule(this.hideToast);
+        this.scheduleOnce(this.hideToast, 1.8);
     }
 
     private renderPlayerData(state: Readonly<PlayerState>): void {
@@ -163,12 +302,59 @@ export class MainUI extends Component {
         if (this.stageTitleLabel) {
             this.stageTitleLabel.string = '第 ' + state.stage + ' 关 · 微风草原';
         }
+        if (this.stageHintLabel) {
+            this.stageHintLabel.string = state.idleSeconds > 0
+                ? '小羊正在冒险，挂机奖励持续累积中'
+                : '小羊正在休息，喂草后开始冒险';
+        }
         if (this.sheepNameLabel) {
             this.sheepNameLabel.string = '绵绵  Lv.' + state.level;
         }
         if (this.experienceLabel) {
             this.experienceLabel.string = '经验 ' + state.exp + ' / ' + playerData.requiredExperience(state.level);
         }
+        if (this.idleTimeLabel) {
+            this.idleTimeLabel.string = '挂机时间  ' + this.formatTime(state.idleSeconds);
+        }
+        if (this.idleHintLabel) {
+            this.idleHintLabel.string = state.idleSeconds > 0
+                ? '每 10 秒获得 1 金币与 2 经验'
+                : '暂无草料供给';
+        }
+        if (this.taskTextLabel && this.taskProgressLabel) {
+            if (state.starterTaskClaimed) {
+                this.taskTextLabel.string = '新手任务完成：奖励已领取';
+                this.taskProgressLabel.string = '已完成';
+            } else if (state.feedCount >= 1) {
+                this.taskTextLabel.string = '任务完成！点击领取 50 金币与 3 草料';
+                this.taskProgressLabel.string = '领取';
+            } else {
+                this.taskTextLabel.string = '新手任务：给小羊喂 1 份草';
+                this.taskProgressLabel.string = '0 / 1';
+            }
+        }
+        if (this.shopCoinLabel) {
+            this.shopCoinLabel.string = '金币：' + state.coins;
+        }
+        if (this.shopGrassLabel) {
+            this.shopGrassLabel.string = '草料：' + state.grass;
+        }
+    }
+
+    private formatTime(totalSeconds: number): string {
+        const seconds = Math.max(0, Math.min(MAX_IDLE_SECONDS, Math.floor(totalSeconds)));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainder = seconds % 60;
+        return this.padTime(hours) + ':' + this.padTime(minutes) + ':' + this.padTime(remainder);
+    }
+
+    private padTime(value: number): string {
+        return value < 10 ? '0' + value : String(value);
+    }
+
+    private bindTap(node: Node, callback: () => void): void {
+        node.on(Node.EventType.TOUCH_END, callback, this);
     }
 
     private drawSheep(parent: Node): void {
