@@ -54,7 +54,7 @@ export class MainUI extends Component {
 
     private createHeader(root: Node): void {
         this.addLabel(root, 'GameTitle', '羊羊挂机', 0, 585, 360, 58, 38, this.colors.greenDark, true);
-        this.addLabel(root, 'Subtitle', '轻松养羊 · 慢慢变强', 0, 545, 360, 34, 18, this.colors.muted);
+        this.addLabel(root, 'Subtitle', '轻松养羊 · 慢慢变强', 0, 545, 360, 34, 22, this.colors.muted);
 
         const stats = [
             { x: -238, icon: 'LV', value: '1', label: '等级', color: this.colors.panelGreen },
@@ -66,7 +66,7 @@ export class MainUI extends Component {
             const card = this.addPanel(root, stat.label + 'Card', stat.x, 470, 204, 86, stat.color, this.colors.greenDark, 12, 3);
             this.addLabel(card, stat.label + 'Icon', stat.icon, -70, 7, 42, 42, 21, this.colors.greenDark, true);
             this.addLabel(card, stat.label + 'Value', stat.value, 13, 12, 90, 34, 25, this.colors.ink, true);
-            this.addLabel(card, stat.label + 'Text', stat.label, 13, -18, 90, 24, 15, this.colors.muted);
+            this.addLabel(card, stat.label + 'Text', stat.label, 13, -18, 90, 26, 18, this.colors.muted);
         }
     }
 
@@ -80,7 +80,7 @@ export class MainUI extends Component {
     private createStage(root: Node): void {
         const stage = this.addPanel(root, 'StagePanel', 0, 72, 656, 540, this.colors.panelGreen, this.colors.greenDark, 18, 4);
         this.addLabel(stage, 'StageTitle', '第 1 关 · 微风草原', 0, 222, 390, 48, 25, this.colors.greenDark, true);
-        this.addLabel(stage, 'StageHint', '小羊正在休息，喂草后开始冒险', 0, 180, 520, 34, 17, this.colors.muted);
+        this.addLabel(stage, 'StageHint', '小羊正在休息，喂草后开始冒险', 0, 180, 520, 38, 20, this.colors.muted);
 
         this.drawGrass(stage, -250, -150);
         this.drawGrass(stage, 238, -130);
@@ -92,14 +92,14 @@ export class MainUI extends Component {
 
         const status = this.addPanel(stage, 'IdleStatus', 0, -196, 490, 62, this.colors.white, this.colors.green, 11, 3);
         this.addLabel(status, 'IdleStatusText', '挂机时间  00:00:00', 0, 7, 430, 30, 19, this.colors.ink, true);
-        this.addLabel(status, 'IdleStatusHint', '暂无草料供给', 0, -17, 430, 24, 14, this.colors.muted);
+        this.addLabel(status, 'IdleStatusHint', '暂无草料供给', 0, -17, 430, 28, 18, this.colors.muted);
     }
 
     private createFeedButton(root: Node): void {
         const button = this.addPanel(root, 'FeedButton', 0, -248, 560, 92, this.colors.yellow, this.colors.brown, 16, 4);
         this.addLabel(button, 'FeedPlus', '＋', -206, 0, 58, 58, 35, this.colors.brown, true);
         this.addLabel(button, 'FeedText', '喂草', -35, 10, 210, 40, 27, this.colors.brown, true);
-        this.addLabel(button, 'FeedHint', '消耗 1 份草 · 增加 10 分钟', 35, -24, 310, 28, 15, this.colors.brown);
+        this.addLabel(button, 'FeedHint', '消耗 1 份草 · 增加 10 分钟', 35, -24, 310, 30, 18, this.colors.brown);
     }
 
     private createNavigation(root: Node): void {
@@ -117,10 +117,10 @@ export class MainUI extends Component {
             const button = this.addPanel(bar, item.label + 'Nav', item.x, 12, 142, 126, fill, border, 15, 3);
             const textColor = item.active ? this.colors.white : this.colors.greenDark;
             this.addLabel(button, item.label + 'Icon', item.icon, 0, 22, 58, 58, 28, textColor, true);
-            this.addLabel(button, item.label + 'Label', item.label, 0, -30, 108, 30, 17, textColor, true);
+            this.addLabel(button, item.label + 'Label', item.label, 0, -30, 108, 32, 20, textColor, true);
         }
 
-        this.addLabel(bar, 'VersionText', 'V0.1 · 原型界面', 0, -75, 260, 24, 13, this.colors.muted);
+        this.addLabel(bar, 'VersionText', 'V0.1 · 原型界面', 0, -75, 260, 26, 16, this.colors.muted);
     }
 
     private drawSheep(parent: Node): void {
