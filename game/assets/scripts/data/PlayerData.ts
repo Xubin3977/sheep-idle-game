@@ -9,12 +9,21 @@ export interface PlayerState {
     idleSeconds: number;
     feedCount: number;
     starterTaskClaimed: boolean;
+    potions: number;
+    wool: number;
 }
 
 export type PlayerDataListener = (state: Readonly<PlayerState>) => void;
 export type FeedResult = 'success' | 'no-grass' | 'time-full';
 export type PurchaseResult = 'success' | 'not-enough-coins';
 export type TaskClaimResult = 'success' | 'not-ready' | 'already-claimed';
+
+export interface BattleReward {
+    coins: number;
+    exp: number;
+    wool: number;
+    potions: number;
+}
 
 interface StoredPlayerData {
     version: number;
@@ -24,7 +33,7 @@ interface StoredPlayerData {
 }
 
 const STORAGE_KEY = 'sheep-idle-game.player-data.v2';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 const MAX_VALUE = 100_000_000;
 const MAX_LEVEL = 100;
 
@@ -38,6 +47,9 @@ export const SHOP_GRASS_COST = 80;
 export const SHOP_GRASS_AMOUNT = 5;
 export const STARTER_TASK_REWARD_COINS = 50;
 export const STARTER_TASK_REWARD_GRASS = 3;
+export const SHOP_POTION_COST = 120;
+export const POTION_HEAL_AMOUNT = 35;
+export const WOOL_SELL_VALUE = 25;
 
 const INITIAL_PLAYER_STATE: PlayerState = {
     coins: 100,
@@ -48,6 +60,8 @@ const INITIAL_PLAYER_STATE: PlayerState = {
     idleSeconds: 0,
     feedCount: 0,
     starterTaskClaimed: false,
+    potions: 1,
+    wool: 0,
 };
 
 export class PlayerData {
@@ -124,6 +138,60 @@ export class PlayerData {
             grass: this.state.grass + SHOP_GRASS_AMOUNT,
         });
         return 'success';
+    }
+
+    purchasePotion(): PurchaseResult {
+        if (this.state.coins < SHOP_POTION_COST) {
+            return 'not-enough-coins';
+        }
+
+        this.replaceState({
+            ...this.state,
+            coins: this.state.coins - SHOP_POTION_COST,
+            potions: this.state.potions + 1,
+        });
+        return 'success';
+    }
+
+    consumePotion(): boolean {
+        if (this.state.potions <= 0) {
+            return false;
+        }
+        this.patch({ potions: this.state.potions - 1 });
+        return true;
+    }
+
+    sellWool(): boolean {
+        if (this.state.wool <= 0) {
+            return false;
+        }
+        this.patch({
+            wool: this.state.wool - 1,
+            coins: this.state.coins + WOOL_SELL_VALUE,
+        });
+        return true;
+    }
+
+    completeCurrentStage(): BattleReward {
+        const clearedStage = this.state.stage;
+        const reward: BattleReward = {
+            coins: 15 + clearedStage * 10,
+            exp: 20 + clearedStage * 5,
+            wool: 1,
+            potions: clearedStage % 3 === 0 ? 1 : 0,
+        };
+        const experience = this.calculateExperience(this.state.level, this.state.exp, reward.exp);
+
+        this.replaceState({
+            ...this.state,
+            coins: this.state.coins + reward.coins,
+            level: experience.level,
+            exp: experience.exp,
+            stage: this.state.stage + 1,
+            wool: this.state.wool + reward.wool,
+            potions: this.state.potions + reward.potions,
+        });
+        return reward;
     }
 
     claimStarterTask(): TaskClaimResult {
@@ -244,6 +312,8 @@ export class PlayerData {
             || normalized.idleSeconds !== this.state.idleSeconds
             || normalized.feedCount !== this.state.feedCount
             || normalized.starterTaskClaimed !== this.state.starterTaskClaimed
+            || normalized.potions !== this.state.potions
+            || normalized.wool !== this.state.wool
         );
 
         if (!changed) {
@@ -268,6 +338,8 @@ export class PlayerData {
             idleSeconds: this.clamp(state.idleSeconds ?? 0, 0, MAX_IDLE_SECONDS),
             feedCount: this.clamp(state.feedCount ?? 0, 0, MAX_VALUE),
             starterTaskClaimed: Boolean(state.starterTaskClaimed),
+            potions: this.clamp(state.potions ?? INITIAL_PLAYER_STATE.potions, 0, MAX_VALUE),
+            wool: this.clamp(state.wool ?? INITIAL_PLAYER_STATE.wool, 0, MAX_VALUE),
         };
     }
 
@@ -279,7 +351,8 @@ export class PlayerData {
             }
 
             const stored = JSON.parse(raw) as Partial<StoredPlayerData>;
-            if (!stored.state || stored.version !== SAVE_VERSION) {
+            const version = Number(stored.version);
+            if (!stored.state || !Number.isFinite(version) || version < 2 || version > SAVE_VERSION) {
                 return;
             }
 
