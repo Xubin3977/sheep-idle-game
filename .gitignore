@@ -1,0 +1,14 @@
+# Cocos Creator generated files
+/game/.creator/
+/game/library/
+/game/temp/
+/game/local/
+/game/build/
+/game/profiles/
+/game/native/
+/game/node_modules/
+
+# Logs and system files
+*.log
+.DS_Store
+Thumbs.db
