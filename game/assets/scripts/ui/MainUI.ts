@@ -13,11 +13,14 @@ import {
 } from 'cc';
 import {
     MAX_IDLE_SECONDS,
+    POTION_HEAL_AMOUNT,
     PlayerState,
     SHOP_GRASS_AMOUNT,
     SHOP_GRASS_COST,
+    SHOP_POTION_COST,
     STARTER_TASK_REWARD_COINS,
     STARTER_TASK_REWARD_GRASS,
+    WOOL_SELL_VALUE,
     playerData,
 } from '../data/PlayerData';
 
@@ -38,10 +41,23 @@ export class MainUI extends Component {
     private taskProgressLabel: Label | null = null;
     private shopCoinLabel: Label | null = null;
     private shopGrassLabel: Label | null = null;
+    private shopPotionLabel: Label | null = null;
+    private dungeonStageLabel: Label | null = null;
+    private playerHpLabel: Label | null = null;
+    private enemyHpLabel: Label | null = null;
+    private battleLogLabel: Label | null = null;
+    private backpackPotionLabel: Label | null = null;
+    private backpackWoolLabel: Label | null = null;
     private toastNode: Node | null = null;
     private toastLabel: Label | null = null;
     private shopOverlay: Node | null = null;
+    private dungeonOverlay: Node | null = null;
+    private backpackOverlay: Node | null = null;
     private unsubscribePlayerData: (() => void) | null = null;
+    private battleStage = 0;
+    private playerHp = 0;
+    private enemyHp = 0;
+    private battleMessage = '准备挑战守关怪物';
 
     private readonly colors = {
         background: new Color(255, 250, 232, 255),
@@ -102,6 +118,8 @@ export class MainUI extends Component {
         this.createNavigation(root);
         this.createToast(root);
         this.createShopOverlay(root);
+        this.createDungeonOverlay(root);
+        this.createBackpackOverlay(root);
     }
 
     private createHeader(root: Node): void {
@@ -180,9 +198,9 @@ export class MainUI extends Component {
         const bar = this.addPanel(root, 'BottomBar', 0, -512, 720, 190, this.colors.panel, this.colors.green, 0, 3);
         const items = [
             { x: -270, icon: '店', label: '商城', active: false, action: () => this.openShop() },
-            { x: -90, icon: '羊', label: '主页', active: true, action: () => this.closeShop() },
-            { x: 90, icon: '战', label: '副本', active: false, action: () => this.showToast('副本将在后续版本开放') },
-            { x: 270, icon: '包', label: '背包', active: false, action: () => this.showToast('背包将在后续版本开放') },
+            { x: -90, icon: '羊', label: '主页', active: true, action: () => this.closeAllOverlays() },
+            { x: 90, icon: '战', label: '副本', active: false, action: () => this.openDungeon() },
+            { x: 270, icon: '包', label: '背包', active: false, action: () => this.openBackpack() },
         ];
 
         for (const item of items) {
@@ -195,7 +213,7 @@ export class MainUI extends Component {
             this.bindTap(button, item.action);
         }
 
-        this.addLabel(bar, 'VersionText', 'V0.2 · 可玩版', 0, -75, 260, 26, 16, this.colors.muted);
+        this.addLabel(bar, 'VersionText', 'V0.3 · 冒险版', 0, -75, 260, 26, 16, this.colors.muted);
     }
 
     private createToast(root: Node): void {
@@ -207,32 +225,116 @@ export class MainUI extends Component {
     private createShopOverlay(root: Node): void {
         this.shopOverlay = this.addPanel(root, 'ShopOverlay', 0, 0, 720, 1280, this.colors.overlay, this.colors.overlay, 0, 0);
         this.shopOverlay.addComponent(BlockInputEvents);
-        const panel = this.addPanel(this.shopOverlay, 'ShopPanel', 0, 60, 620, 760, this.colors.panel, this.colors.greenDark, 22, 4);
+        const panel = this.addPanel(this.shopOverlay, 'ShopPanel', 0, 30, 620, 900, this.colors.panel, this.colors.greenDark, 22, 4);
 
-        this.addLabel(panel, 'ShopTitle', '草料商城', 0, 310, 300, 58, 34, this.colors.greenDark, true);
-        this.addLabel(panel, 'ShopSubtitle', '用挂机金币补充小羊的草料', 0, 262, 420, 34, 20, this.colors.muted);
+        this.addLabel(panel, 'ShopTitle', '羊羊商城', 0, 380, 300, 58, 34, this.colors.greenDark, true);
+        this.addLabel(panel, 'ShopSubtitle', '购买冒险需要的补给', 0, 334, 420, 34, 20, this.colors.muted);
 
-        const close = this.addPanel(panel, 'ShopClose', 254, 320, 62, 62, this.colors.panelGreen, this.colors.green, 12, 3);
+        const close = this.addPanel(panel, 'ShopClose', 254, 390, 62, 62, this.colors.panelGreen, this.colors.green, 12, 3);
         this.addLabel(close, 'ShopCloseText', '×', 0, 2, 44, 44, 30, this.colors.greenDark, true);
         this.bindTap(close, () => this.closeShop());
 
-        const wallet = this.addPanel(panel, 'ShopWallet', 0, 190, 510, 100, this.colors.panelGreen, this.colors.green, 14, 3);
-        this.shopCoinLabel = this.addLabel(wallet, 'ShopCoins', '金币：100', -120, 0, 220, 48, 22, this.colors.ink, true);
-        this.shopGrassLabel = this.addLabel(wallet, 'ShopGrass', '草料：12', 120, 0, 220, 48, 22, this.colors.ink, true);
+        const wallet = this.addPanel(panel, 'ShopWallet', 0, 270, 510, 90, this.colors.panelGreen, this.colors.green, 14, 3);
+        this.shopCoinLabel = this.addLabel(wallet, 'ShopCoins', '金币：100', -165, 0, 155, 48, 20, this.colors.ink, true);
+        this.shopGrassLabel = this.addLabel(wallet, 'ShopGrass', '草料：12', 0, 0, 155, 48, 20, this.colors.ink, true);
+        this.shopPotionLabel = this.addLabel(wallet, 'ShopPotions', '药水：1', 165, 0, 155, 48, 20, this.colors.ink, true);
 
-        const product = this.addPanel(panel, 'GrassProduct', 0, 18, 510, 190, this.colors.yellowSoft, this.colors.brown, 16, 3);
-        this.addLabel(product, 'GrassProductIcon', '叶', -182, 28, 70, 70, 38, this.colors.greenDark, true);
-        this.addLabel(product, 'GrassProductTitle', '新鲜草料 × ' + SHOP_GRASS_AMOUNT, 22, 44, 310, 46, 25, this.colors.ink, true);
-        this.addLabel(product, 'GrassProductDesc', '可增加 ' + (SHOP_GRASS_AMOUNT * 10) + ' 分钟挂机时间', 22, 4, 330, 34, 18, this.colors.muted);
+        const product = this.addPanel(panel, 'GrassProduct', 0, 115, 510, 150, this.colors.yellowSoft, this.colors.brown, 16, 3);
+        this.addLabel(product, 'GrassProductIcon', '叶', -190, 18, 70, 70, 36, this.colors.greenDark, true);
+        this.addLabel(product, 'GrassProductTitle', '新鲜草料 × ' + SHOP_GRASS_AMOUNT, 18, 32, 310, 40, 23, this.colors.ink, true);
+        this.addLabel(product, 'GrassProductDesc', '增加 ' + (SHOP_GRASS_AMOUNT * 10) + ' 分钟挂机时间', 18, 0, 330, 30, 17, this.colors.muted);
 
-        const buyButton = this.addPanel(product, 'BuyGrassButton', 42, -56, 320, 62, this.colors.yellow, this.colors.brown, 12, 3);
-        this.addLabel(buyButton, 'BuyGrassText', SHOP_GRASS_COST + ' 金币购买', 0, 0, 270, 40, 21, this.colors.brown, true);
+        const buyButton = this.addPanel(product, 'BuyGrassButton', 44, -48, 300, 50, this.colors.yellow, this.colors.brown, 10, 3);
+        this.addLabel(buyButton, 'BuyGrassText', SHOP_GRASS_COST + ' 金币购买', 0, 0, 260, 36, 19, this.colors.brown, true);
         this.bindTap(buyButton, () => this.handlePurchaseTap());
 
-        this.addLabel(panel, 'ShopTip', '挂机每 10 秒获得 1 金币与 2 经验', 0, -135, 500, 38, 19, this.colors.muted);
-        this.addLabel(panel, 'ShopSaveTip', '游戏进度会自动保存在当前设备', 0, -190, 500, 38, 18, this.colors.greenDark);
+        const potion = this.addPanel(panel, 'PotionProduct', 0, -70, 510, 150, this.colors.panelGreen, this.colors.greenDark, 16, 3);
+        this.addLabel(potion, 'PotionProductIcon', '药', -190, 18, 70, 70, 34, this.colors.greenDark, true);
+        this.addLabel(potion, 'PotionProductTitle', '恢复药水 × 1', 18, 32, 310, 40, 23, this.colors.ink, true);
+        this.addLabel(potion, 'PotionProductDesc', '副本中恢复 ' + POTION_HEAL_AMOUNT + ' 点生命', 18, 0, 330, 30, 17, this.colors.muted);
+
+        const buyPotion = this.addPanel(potion, 'BuyPotionButton', 44, -48, 300, 50, this.colors.green, this.colors.greenDark, 10, 3);
+        this.addLabel(buyPotion, 'BuyPotionText', SHOP_POTION_COST + ' 金币购买', 0, 0, 260, 36, 19, this.colors.white, true);
+        this.bindTap(buyPotion, () => this.handlePotionPurchaseTap());
+
+        this.addLabel(panel, 'ShopTip', '挑战关卡可获得金币、经验与羊毛', 0, -195, 500, 38, 19, this.colors.muted);
+        this.addLabel(panel, 'ShopSaveTip', '进度与背包会自动保存在当前设备', 0, -245, 500, 38, 18, this.colors.greenDark);
 
         this.shopOverlay.active = false;
+    }
+
+    private createDungeonOverlay(root: Node): void {
+        this.dungeonOverlay = this.addPanel(root, 'DungeonOverlay', 0, 0, 720, 1280, this.colors.overlay, this.colors.overlay, 0, 0);
+        this.dungeonOverlay.addComponent(BlockInputEvents);
+        const panel = this.addPanel(this.dungeonOverlay, 'DungeonPanel', 0, 20, 620, 940, this.colors.panel, this.colors.greenDark, 22, 4);
+
+        this.addLabel(panel, 'DungeonTitle', '冒险副本', 0, 400, 300, 58, 34, this.colors.greenDark, true);
+        this.dungeonStageLabel = this.addLabel(panel, 'DungeonStage', '第 1 关 · 微风草原', 0, 350, 430, 40, 23, this.colors.muted, true);
+
+        const close = this.addPanel(panel, 'DungeonClose', 254, 410, 62, 62, this.colors.panelGreen, this.colors.green, 12, 3);
+        this.addLabel(close, 'DungeonCloseText', '×', 0, 2, 44, 44, 30, this.colors.greenDark, true);
+        this.bindTap(close, () => this.closeAllOverlays());
+
+        const enemy = this.addPanel(panel, 'EnemyCard', 0, 205, 510, 210, this.colors.yellowSoft, this.colors.brown, 16, 3);
+        this.addLabel(enemy, 'EnemyIcon', '狼', 0, 42, 110, 90, 46, this.colors.brown, true);
+        this.addLabel(enemy, 'EnemyName', '草原灰狼', 0, -18, 250, 38, 24, this.colors.ink, true);
+        this.enemyHpLabel = this.addLabel(enemy, 'EnemyHp', '敌人生命 42 / 42', 0, -62, 360, 34, 19, this.colors.brown, true);
+
+        this.addLabel(panel, 'VersusText', 'VS', 0, 72, 100, 48, 28, this.colors.greenDark, true);
+
+        const player = this.addPanel(panel, 'BattlePlayerCard', 0, -20, 510, 130, this.colors.panelGreen, this.colors.greenDark, 16, 3);
+        this.addLabel(player, 'BattlePlayerIcon', '羊', -180, 0, 70, 70, 34, this.colors.greenDark, true);
+        this.addLabel(player, 'BattlePlayerName', '绵绵', -45, 22, 180, 38, 23, this.colors.ink, true);
+        this.playerHpLabel = this.addLabel(player, 'PlayerHp', '生命 100 / 100', 65, -22, 310, 34, 19, this.colors.greenDark, true);
+
+        const log = this.addPanel(panel, 'BattleLog', 0, -132, 510, 70, this.colors.white, this.colors.green, 12, 3);
+        this.battleLogLabel = this.addLabel(log, 'BattleLogText', this.battleMessage, 0, 0, 460, 46, 18, this.colors.ink, true);
+
+        const attack = this.addPanel(panel, 'AttackButton', -135, -225, 230, 72, this.colors.yellow, this.colors.brown, 13, 3);
+        this.addLabel(attack, 'AttackText', '攻击', 0, 0, 190, 44, 23, this.colors.brown, true);
+        this.bindTap(attack, () => this.handleAttackTap());
+
+        const heal = this.addPanel(panel, 'PotionButton', 135, -225, 230, 72, this.colors.green, this.colors.greenDark, 13, 3);
+        this.addLabel(heal, 'PotionText', '使用药水', 0, 9, 190, 34, 21, this.colors.white, true);
+        this.addLabel(heal, 'PotionHint', '恢复 ' + POTION_HEAL_AMOUNT + ' 生命', 0, -18, 190, 26, 15, this.colors.white);
+        this.bindTap(heal, () => this.handleUsePotionTap());
+
+        this.addLabel(panel, 'DungeonTip', '胜利：金币＋经验＋羊毛｜每 3 关额外掉落药水', 0, -330, 530, 48, 18, this.colors.muted);
+        this.dungeonOverlay.active = false;
+    }
+
+    private createBackpackOverlay(root: Node): void {
+        this.backpackOverlay = this.addPanel(root, 'BackpackOverlay', 0, 0, 720, 1280, this.colors.overlay, this.colors.overlay, 0, 0);
+        this.backpackOverlay.addComponent(BlockInputEvents);
+        const panel = this.addPanel(this.backpackOverlay, 'BackpackPanel', 0, 30, 620, 900, this.colors.panel, this.colors.greenDark, 22, 4);
+
+        this.addLabel(panel, 'BackpackTitle', '羊羊背包', 0, 380, 300, 58, 34, this.colors.greenDark, true);
+        this.addLabel(panel, 'BackpackSubtitle', '冒险获得的道具会保存在这里', 0, 334, 440, 34, 20, this.colors.muted);
+
+        const close = this.addPanel(panel, 'BackpackClose', 254, 390, 62, 62, this.colors.panelGreen, this.colors.green, 12, 3);
+        this.addLabel(close, 'BackpackCloseText', '×', 0, 2, 44, 44, 30, this.colors.greenDark, true);
+        this.bindTap(close, () => this.closeAllOverlays());
+
+        const potion = this.addPanel(panel, 'BackpackPotion', 0, 170, 510, 190, this.colors.panelGreen, this.colors.greenDark, 16, 3);
+        this.addLabel(potion, 'BackpackPotionIcon', '药', -188, 28, 72, 72, 36, this.colors.greenDark, true);
+        this.addLabel(potion, 'BackpackPotionTitle', '恢复药水', -15, 48, 260, 40, 24, this.colors.ink, true);
+        this.backpackPotionLabel = this.addLabel(potion, 'BackpackPotionCount', '持有：1', -15, 10, 260, 34, 19, this.colors.greenDark, true);
+        this.addLabel(potion, 'BackpackPotionDesc', '副本战斗中恢复 ' + POTION_HEAL_AMOUNT + ' 点生命', -15, -24, 320, 30, 17, this.colors.muted);
+        const goDungeon = this.addPanel(potion, 'GoDungeonButton', 72, -68, 250, 48, this.colors.green, this.colors.greenDark, 10, 3);
+        this.addLabel(goDungeon, 'GoDungeonText', '前往副本', 0, 0, 210, 34, 18, this.colors.white, true);
+        this.bindTap(goDungeon, () => this.openDungeon());
+
+        const wool = this.addPanel(panel, 'BackpackWool', 0, -65, 510, 190, this.colors.yellowSoft, this.colors.brown, 16, 3);
+        this.addLabel(wool, 'BackpackWoolIcon', '毛', -188, 28, 72, 72, 36, this.colors.brown, true);
+        this.addLabel(wool, 'BackpackWoolTitle', '柔软羊毛', -15, 48, 260, 40, 24, this.colors.ink, true);
+        this.backpackWoolLabel = this.addLabel(wool, 'BackpackWoolCount', '持有：0', -15, 10, 260, 34, 19, this.colors.brown, true);
+        this.addLabel(wool, 'BackpackWoolDesc', '每份可出售 ' + WOOL_SELL_VALUE + ' 金币', -15, -24, 320, 30, 17, this.colors.muted);
+        const sell = this.addPanel(wool, 'SellWoolButton', 72, -68, 250, 48, this.colors.yellow, this.colors.brown, 10, 3);
+        this.addLabel(sell, 'SellWoolText', '出售 1 份', 0, 0, 210, 34, 18, this.colors.brown, true);
+        this.bindTap(sell, () => this.handleSellWoolTap());
+
+        this.addLabel(panel, 'BackpackTip', '继续挑战副本可以收集更多道具', 0, -245, 500, 38, 19, this.colors.muted);
+        this.backpackOverlay.active = false;
     }
 
     private handleFeedTap(): void {
@@ -266,7 +368,77 @@ export class MainUI extends Component {
         }
     }
 
+    private handlePotionPurchaseTap(): void {
+        const result = playerData.purchasePotion();
+        if (result === 'success') {
+            this.showToast('购买成功：获得 1 瓶恢复药水');
+        } else {
+            this.showToast('金币不足，需要 ' + SHOP_POTION_COST + ' 金币');
+        }
+    }
+
+    private handleSellWoolTap(): void {
+        if (playerData.sellWool()) {
+            this.showToast('出售成功：获得 ' + WOOL_SELL_VALUE + ' 金币');
+        } else {
+            this.showToast('背包里还没有羊毛');
+        }
+    }
+
+    private handleAttackTap(): void {
+        const state = playerData.snapshot;
+        this.ensureBattleState(state);
+        const damage = this.getPlayerAttack(state.level);
+        this.enemyHp = Math.max(0, this.enemyHp - damage);
+
+        if (this.enemyHp <= 0) {
+            const clearedStage = state.stage;
+            const reward = playerData.completeCurrentStage();
+            const nextState = playerData.snapshot;
+            this.ensureBattleState(nextState);
+            this.battleMessage = '第 ' + clearedStage + ' 关胜利：+' + reward.coins + ' 金币，+'
+                + reward.exp + ' 经验，+' + reward.wool + ' 羊毛'
+                + (reward.potions > 0 ? '，+' + reward.potions + ' 药水' : '');
+            this.renderBattle(nextState);
+            this.showToast('挑战胜利，已解锁第 ' + nextState.stage + ' 关');
+            return;
+        }
+
+        const enemyDamage = this.getEnemyAttack(state.stage);
+        this.playerHp = Math.max(0, this.playerHp - enemyDamage);
+        if (this.playerHp <= 0) {
+            this.playerHp = this.getPlayerMaxHp(state.level);
+            this.enemyHp = this.getEnemyMaxHp(state.stage);
+            this.battleMessage = '挑战失败，绵绵休息后恢复了生命，请再次尝试';
+            this.showToast('挑战失败，本次不会损失道具');
+        } else {
+            this.battleMessage = '绵绵造成 ' + damage + ' 伤害，灰狼反击造成 ' + enemyDamage + ' 伤害';
+        }
+        this.renderBattle(state);
+    }
+
+    private handleUsePotionTap(): void {
+        const state = playerData.snapshot;
+        this.ensureBattleState(state);
+        const maxHp = this.getPlayerMaxHp(state.level);
+        if (this.playerHp >= maxHp) {
+            this.showToast('当前生命已满，不需要使用药水');
+            return;
+        }
+        if (!playerData.consumePotion()) {
+            this.showToast('恢复药水不足，可前往商城购买');
+            return;
+        }
+
+        const healed = Math.min(POTION_HEAL_AMOUNT, maxHp - this.playerHp);
+        this.playerHp += healed;
+        this.battleMessage = '使用恢复药水，绵绵恢复了 ' + healed + ' 点生命';
+        this.renderBattle(playerData.snapshot);
+        this.showToast('药水使用成功');
+    }
+
     private openShop(): void {
+        this.closeAllOverlays();
         if (this.shopOverlay) {
             this.shopOverlay.active = true;
         }
@@ -276,6 +448,91 @@ export class MainUI extends Component {
         if (this.shopOverlay) {
             this.shopOverlay.active = false;
         }
+    }
+
+    private openDungeon(): void {
+        this.closeAllOverlays();
+        if (this.dungeonOverlay) {
+            this.dungeonOverlay.active = true;
+        }
+        const state = playerData.snapshot;
+        this.ensureBattleState(state);
+        this.renderBattle(state);
+    }
+
+    private openBackpack(): void {
+        this.closeAllOverlays();
+        if (this.backpackOverlay) {
+            this.backpackOverlay.active = true;
+        }
+    }
+
+    private closeAllOverlays(): void {
+        if (this.shopOverlay) {
+            this.shopOverlay.active = false;
+        }
+        if (this.dungeonOverlay) {
+            this.dungeonOverlay.active = false;
+        }
+        if (this.backpackOverlay) {
+            this.backpackOverlay.active = false;
+        }
+    }
+
+    private ensureBattleState(state: Readonly<PlayerState>): void {
+        if (this.battleStage === state.stage && this.playerHp > 0 && this.enemyHp > 0) {
+            return;
+        }
+        this.battleStage = state.stage;
+        this.playerHp = this.getPlayerMaxHp(state.level);
+        this.enemyHp = this.getEnemyMaxHp(state.stage);
+        this.battleMessage = '准备挑战第 ' + state.stage + ' 关守关灰狼';
+    }
+
+    private renderBattle(state: Readonly<PlayerState>): void {
+        this.ensureBattleState(state);
+        const playerMaxHp = this.getPlayerMaxHp(state.level);
+        const enemyMaxHp = this.getEnemyMaxHp(state.stage);
+        if (this.dungeonStageLabel) {
+            this.dungeonStageLabel.string = '第 ' + state.stage + ' 关 · ' + this.getStageName(state.stage);
+        }
+        if (this.playerHpLabel) {
+            this.playerHpLabel.string = '生命 ' + this.playerHp + ' / ' + playerMaxHp
+                + '　攻击 ' + this.getPlayerAttack(state.level);
+        }
+        if (this.enemyHpLabel) {
+            this.enemyHpLabel.string = '敌人生命 ' + this.enemyHp + ' / ' + enemyMaxHp
+                + '　攻击 ' + this.getEnemyAttack(state.stage);
+        }
+        if (this.battleLogLabel) {
+            this.battleLogLabel.string = this.battleMessage;
+        }
+    }
+
+    private getPlayerMaxHp(level: number): number {
+        return 80 + level * 20;
+    }
+
+    private getPlayerAttack(level: number): number {
+        return 8 + level * 4;
+    }
+
+    private getEnemyMaxHp(stage: number): number {
+        return 30 + stage * 12;
+    }
+
+    private getEnemyAttack(stage: number): number {
+        return 3 + stage * 2;
+    }
+
+    private getStageName(stage: number): string {
+        if (stage <= 5) {
+            return '微风草原';
+        }
+        if (stage <= 10) {
+            return '晨露森林';
+        }
+        return '星光山谷';
     }
 
     private showToast(message: string): void {
@@ -300,7 +557,7 @@ export class MainUI extends Component {
             this.grassValueLabel.string = String(state.grass);
         }
         if (this.stageTitleLabel) {
-            this.stageTitleLabel.string = '第 ' + state.stage + ' 关 · 微风草原';
+            this.stageTitleLabel.string = '第 ' + state.stage + ' 关 · ' + this.getStageName(state.stage);
         }
         if (this.stageHintLabel) {
             this.stageHintLabel.string = state.idleSeconds > 0
@@ -338,6 +595,18 @@ export class MainUI extends Component {
         }
         if (this.shopGrassLabel) {
             this.shopGrassLabel.string = '草料：' + state.grass;
+        }
+        if (this.shopPotionLabel) {
+            this.shopPotionLabel.string = '药水：' + state.potions;
+        }
+        if (this.backpackPotionLabel) {
+            this.backpackPotionLabel.string = '持有：' + state.potions;
+        }
+        if (this.backpackWoolLabel) {
+            this.backpackWoolLabel.string = '持有：' + state.wool;
+        }
+        if (this.dungeonOverlay && this.dungeonOverlay.active) {
+            this.renderBattle(state);
         }
     }
 
